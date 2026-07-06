@@ -1,0 +1,8 @@
+torch
+numpy
+datasets
+pytest
+fastapi
+uvicorn
+matplotlib
+tqdm
