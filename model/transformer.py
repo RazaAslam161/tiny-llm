@@ -20,7 +20,11 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x):
-        return self.weight * x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        # norm in fp32: in half precision, pow(2).mean() overflows past rms~256
+        # and rsqrt(inf)=0 silently zeroes the row
+        xf = x.float()
+        normed = xf * torch.rsqrt(xf.pow(2).mean(-1, keepdim=True) + self.eps)
+        return self.weight * normed.type_as(x)
 
 
 class CausalSelfAttention(nn.Module):

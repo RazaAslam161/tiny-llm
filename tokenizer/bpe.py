@@ -126,8 +126,10 @@ class BPETokenizer:
 
     def save(self, path):
         data = {"merges": [[a, b, idx] for (a, b), idx in self.merges.items()]}
-        with open(path, "w", encoding="utf-8") as f:
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f)
+        os.replace(tmp, path)  # atomic: a crash mid-write can't corrupt the artifact
 
     @classmethod
     def load(cls, path):
