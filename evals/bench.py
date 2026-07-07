@@ -11,6 +11,7 @@ Usage (from the repo root):
 """
 
 import argparse
+import statistics
 import time
 
 import torch
@@ -20,21 +21,25 @@ from model.transformer import GPT
 from serve.engine import generate_cached, generate_naive
 
 
-def _time(fn):
-    t0 = time.perf_counter()
-    fn()
-    return time.perf_counter() - t0
+def _time(fn, repeats):
+    """Median wall time over `repeats` runs — single-shot CPU timings are noisy."""
+    ts = []
+    for _ in range(repeats):
+        t0 = time.perf_counter()
+        fn()
+        ts.append(time.perf_counter() - t0)
+    return statistics.median(ts)
 
 
-def bench_one(model, ctx_len, gen, vocab):
+def bench_one(model, ctx_len, gen, vocab, repeats):
     prompt = torch.randint(0, vocab, (ctx_len,)).tolist()
 
     # time-to-first-token: cost of the first produced token (prompt processing)
-    naive_ttft = _time(lambda: generate_naive(model, prompt, 1, temperature=0))
-    cached_ttft = _time(lambda: generate_cached(model, prompt, 1, temperature=0))
+    naive_ttft = _time(lambda: generate_naive(model, prompt, 1, temperature=0), repeats)
+    cached_ttft = _time(lambda: generate_cached(model, prompt, 1, temperature=0), repeats)
 
-    naive_total = _time(lambda: generate_naive(model, prompt, gen, temperature=0))
-    cached_total = _time(lambda: generate_cached(model, prompt, gen, temperature=0))
+    naive_total = _time(lambda: generate_naive(model, prompt, gen, temperature=0), repeats)
+    cached_total = _time(lambda: generate_cached(model, prompt, gen, temperature=0), repeats)
 
     return {
         "ctx": ctx_len,
@@ -50,6 +55,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gen", type=int, default=64, help="tokens to generate per run")
     ap.add_argument("--contexts", type=int, nargs="+", default=[64, 128, 256, 512])
+    ap.add_argument("--repeats", type=int, default=3, help="timed runs per point (median)")
     ap.add_argument("--out", default="evals/kv_bench.png")
     args = ap.parse_args()
 
@@ -64,9 +70,11 @@ def main():
 
     generate_cached(model, [1, 2, 3], 2, temperature=0)  # warm up lazy init
 
+    print(f"benchmark model: block_size={cfg.block_size} (shipped model is 256); "
+          f"gen={args.gen} tokens, median of {args.repeats} runs")
     rows = []
     for ctx in args.contexts:
-        r = bench_one(model, ctx, args.gen, vocab)
+        r = bench_one(model, ctx, args.gen, vocab, args.repeats)
         rows.append(r)
         print(f"ctx {r['ctx']:4d} | naive {r['naive_tps']:6.1f} tok/s | "
               f"cached {r['cached_tps']:7.1f} tok/s | {r['speedup']:5.1f}x | "

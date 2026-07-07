@@ -71,3 +71,36 @@ def test_cache_grows_by_one_per_step(model):
         _, _, presents = model(torch.tensor([[4]]), past_kvs=cache.layers, use_cache=True)
         cache.update(presents)
         assert cache.length == 4  # one decode step
+
+
+def test_multi_token_continuation_matches_full_forward(model):
+    """Feeding a CHUNK of >1 new tokens against a non-empty cache must match the
+    full forward — this exercises the mask slice for T>1 with past_len>0, which
+    single-token decoding never hits."""
+    torch.manual_seed(3)
+    T, split = 24, 10
+    seq = torch.randint(0, SMALL.vocab_size, (1, T))
+    with torch.no_grad():
+        full_logits, _ = model(seq)
+        _, _, presents = model(seq[:, :split], use_cache=True)          # prefill 10
+        cache = KVCache().update(presents)
+        logits, _, _ = model(seq[:, split:], past_kvs=cache.layers, use_cache=True)  # 14 at once
+        assert torch.allclose(logits[0], full_logits[0, split:], atol=1e-5)
+
+
+def test_generation_caps_at_block_size_identically(model):
+    """Both paths must stop at the position ceiling — same length, same tokens —
+    rather than one crashing and one sliding."""
+    prompt = [1, 2, 3, 4]
+    huge = SMALL.block_size * 3
+    naive = generate_naive(model, prompt, huge, temperature=0)
+    cached = generate_cached(model, prompt, huge, temperature=0)
+    assert len(naive) == SMALL.block_size
+    assert naive == cached
+
+
+def test_batch_input_rejected(model):
+    with pytest.raises(ValueError):
+        generate_naive(model, [[1, 2], [3, 4]], 5)
+    with pytest.raises(ValueError):
+        generate_cached(model, [[1, 2], [3, 4]], 5)
