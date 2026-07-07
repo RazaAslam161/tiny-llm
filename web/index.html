@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tiny-llm</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #e6e9ef;
+    --muted: #8b93a7; --accent: #6ea8fe; --accent-dim: #2b4368;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    display: flex; justify-content: center; padding: 32px 16px;
+  }
+  main { width: 100%; max-width: 720px; }
+  h1 { margin: 0 0 2px; font-size: 22px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .out {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; min-height: 220px; white-space: pre-wrap; word-break: break-word;
+    font-size: 15.5px; margin-bottom: 16px;
+  }
+  .out .prompt { color: var(--accent); }
+  .out.empty::before { content: "Generated story appears here…"; color: var(--muted); }
+  .cursor { display: inline-block; width: 7px; height: 17px; background: var(--accent);
+    vertical-align: text-bottom; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  textarea {
+    width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; font: inherit; resize: vertical; min-height: 60px;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 14px 0; }
+  .ctl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+  .ctl input[type=range] { width: 130px; accent-color: var(--accent); }
+  .ctl .val { color: var(--text); font-variant-numeric: tabular-nums; }
+  button {
+    background: var(--accent); color: #0b1020; border: 0; border-radius: 9px;
+    padding: 10px 22px; font: 600 15px inherit; cursor: pointer; margin-left: auto;
+  }
+  button:disabled { background: var(--accent-dim); color: var(--muted); cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <h1>tiny-llm</h1>
+  <p class="sub">A 12M-parameter GPT trained from scratch on TinyStories · KV-cached streaming inference</p>
+
+  <div id="out" class="out empty"></div>
+
+  <textarea id="prompt" rows="2">Once upon a time</textarea>
+  <div class="controls">
+    <label class="ctl">temperature <span class="val" id="tv">0.8</span>
+      <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.8"></label>
+    <label class="ctl">top-p <span class="val" id="pv">0.9</span>
+      <input type="range" id="topp" min="0.1" max="1" step="0.05" value="0.9"></label>
+    <label class="ctl">max tokens <span class="val" id="mv">200</span>
+      <input type="range" id="maxt" min="16" max="256" step="8" value="200"></label>
+    <button id="go">Generate</button>
+  </div>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const out = $("out"), btn = $("go");
+  const bind = (r, v) => { const f = () => $(v).textContent = $(r).value; $(r).oninput = f; f(); };
+  bind("temp", "tv"); bind("topp", "pv"); bind("maxt", "mv");
+
+  async function generate() {
+    const prompt = $("prompt").value;
+    btn.disabled = true;
+    out.classList.remove("empty");
+    out.innerHTML = '<span class="prompt"></span><span class="cursor"></span>';
+    out.querySelector(".prompt").textContent = prompt;
+    const cursor = out.querySelector(".cursor");
+
+    try {
+      const resp = await fetch("/generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          max_tokens: +$("maxt").value,
+          temperature: +$("temp").value,
+          top_p: +$("topp").value,
+        }),
+      });
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const events = buf.split("\n\n");
+        buf = events.pop();                       // keep the incomplete trailing event
+        for (const ev of events) {
+          const line = ev.replace(/^data: /, "");
+          if (line === "[DONE]") continue;
+          const msg = JSON.parse(line);
+          if (msg.token) cursor.insertAdjacentText("beforebegin", msg.token);
+        }
+      }
+    } catch (e) {
+      out.insertAdjacentText("beforeend", "\n\n[error: " + e.message + "]");
+    } finally {
+      cursor.remove();
+      btn.disabled = false;
+    }
+  }
+
+  btn.onclick = generate;
+  $("prompt").addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
+  });
+</script>
+</body>
+</html>

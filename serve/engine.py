@@ -48,15 +48,21 @@ def generate_naive(model, ids, max_new_tokens, temperature=0.8, top_k=50, top_p=
 @torch.no_grad()
 def generate_cached(model, ids, max_new_tokens, temperature=0.8, top_k=50, top_p=1.0):
     """Prefill the prompt once, then feed one token at a time against the cache."""
+    return list(ids) + list(
+        stream_tokens(model, ids, max_new_tokens, temperature, top_k, top_p)
+    )
+
+
+@torch.no_grad()
+def stream_tokens(model, ids, max_new_tokens, temperature=0.8, top_k=50, top_p=1.0):
+    """Yield generated token ids one at a time (KV-cached) — for live streaming."""
     model.eval()
     n = _budget(model, ids, max_new_tokens)
     cache = KVCache()
-    out = list(ids)
     cur = torch.tensor([ids], dtype=torch.long)  # prefill: whole prompt at once
     for _ in range(n):
         logits, _, presents = model(cur, past_kvs=cache.layers, use_cache=True)
         cache.update(presents)
         nxt = sample(logits[:, -1, :], temperature, top_k, top_p)
-        out.append(int(nxt))
+        yield int(nxt)
         cur = nxt  # thereafter: a single new token per step
-    return out

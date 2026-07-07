@@ -37,7 +37,9 @@ class QuantizedLinear(nn.Module):
         return cls(q, scale, bias)
 
     def forward(self, x):
-        w = self.qweight.to(x.dtype) * self.scale[:, None]  # dequantize
+        # dequantize in fp32 (scale is fp32), then match the input dtype so a
+        # raw fp16 input works without relying on autocast
+        w = (self.qweight.to(self.scale.dtype) * self.scale[:, None]).to(x.dtype)
         return F.linear(x, w, self.bias)
 
 
