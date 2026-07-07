@@ -41,7 +41,7 @@ class CausalSelfAttention(nn.Module):
         self.register_buffer("mask", mask.view(1, 1, config.block_size, config.block_size),
                              persistent=False)
 
-    def forward(self, x):
+    def forward(self, x, past_kv=None):
         B, T, C = x.shape
         q, k, v = self.qkv(x).split(C, dim=2)
         # (B, T, C) -> (B, n_head, T, head_dim)
@@ -49,14 +49,25 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
 
+        if past_kv is not None:  # prepend keys/values cached from earlier steps
+            past_k, past_v = past_kv
+            k = torch.cat((past_k, k), dim=2)
+            v = torch.cat((past_v, v), dim=2)
+        present = (k, v)
+        Tk = k.size(2)  # total keys attended = cached + new
+
         att = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        att = att.masked_fill(~self.mask[:, :, :T, :T], float("-inf"))
+        # the T queries are the LAST T positions; query row i (absolute
+        # position Tk-T+i) may attend to key j <= its own position, which is
+        # exactly the last T rows of the (Tk x Tk) causal mask. With no cache
+        # Tk == T and this is mask[:, :, :T, :T] — identical to before.
+        att = att.masked_fill(~self.mask[:, :, Tk - T:Tk, :Tk], float("-inf"))
         att = F.softmax(att, dim=-1)
         att = self.attn_dropout(att)
         y = att @ v  # (B, n_head, T, head_dim)
 
         y = y.transpose(1, 2).contiguous().view(B, T, C)
-        return self.resid_dropout(self.proj(y))
+        return self.resid_dropout(self.proj(y)), present
 
 
 class MLP(nn.Module):
@@ -78,10 +89,11 @@ class Block(nn.Module):
         self.norm2 = RMSNorm(config.n_embd)
         self.mlp = MLP(config)
 
-    def forward(self, x):
-        x = x + self.attn(self.norm1(x))
+    def forward(self, x, past_kv=None):
+        attn_out, present = self.attn(self.norm1(x), past_kv)
+        x = x + attn_out
         x = x + self.mlp(self.norm2(x))
-        return x
+        return x, present
 
 
 class GPT(nn.Module):
@@ -112,17 +124,27 @@ class GPT(nn.Module):
     def num_params(self):
         return sum(p.numel() for p in self.parameters())
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets=None, past_kvs=None, use_cache=False):
         B, T = idx.shape
-        assert T <= self.config.block_size, f"sequence length {T} > block_size"
-        pos = torch.arange(T, device=idx.device)
+        past_len = past_kvs[0][0].size(2) if past_kvs is not None else 0
+        assert past_len + T <= self.config.block_size, \
+            f"sequence length {past_len + T} > block_size"
+        # positions continue after whatever is already cached
+        pos = torch.arange(past_len, past_len + T, device=idx.device)
         x = self.drop(self.wte(idx) + self.wpe(pos))
-        for block in self.blocks:
-            x = block(x)
+
+        presents = [] if use_cache else None
+        for i, block in enumerate(self.blocks):
+            past = past_kvs[i] if past_kvs is not None else None
+            x, present = block(x, past)
+            if use_cache:
+                presents.append(present)
         x = self.norm_f(x)
         logits = self.lm_head(x)
 
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.reshape(-1))
+        if use_cache:
+            return logits, loss, presents
         return logits, loss
