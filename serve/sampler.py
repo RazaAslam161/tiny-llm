@@ -1,12 +1,5 @@
-"""Token sampling: temperature, top-k, and top-p (nucleus), by hand.
-
-Given last-position logits (B, vocab) the pipeline is:
-  temperature -> top-k filter -> top-p filter -> softmax -> multinomial
-
-temperature <= 0 short-circuits to greedy argmax. Each filter sets rejected
-logits to -inf so the final softmax renormalizes over the survivors only.
-
-Built with Claude Code.
+"""Sampling: temperature, top-k, top-p. temperature <= 0 is greedy argmax;
+each filter sets rejected logits to -inf so softmax renormalizes over the rest.
 """
 
 import torch

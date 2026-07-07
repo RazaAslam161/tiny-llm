@@ -1,12 +1,6 @@
-"""int8 per-output-channel weight quantization for Linear layers.
-
-Per-channel (per output row) symmetric quantization: each row w_i gets its own
-scale s_i = max(|w_i|) / 127, so a row is stored as int8 q = round(w / s) and
-reconstructed as q * s. Per-channel beats per-tensor because one shared scale
-would be dominated by the largest-magnitude row and crush the resolution of the
-small ones. Weights dequantize to fp32 inside forward.
-
-Built with Claude Code.
+"""int8 per-channel weight quant for Linear layers. Each output row gets its own
+scale max(|w|)/127, stored as int8 and dequantized to fp32 in forward. Per row
+so one big-magnitude row doesn't crush the resolution of the small ones.
 """
 
 import torch

@@ -1,19 +1,6 @@
-"""Autoregressive generation: a naive O(T^2) path and a KV-cached O(T) path.
-
-Given identical logits the two produce identical tokens — that equivalence is
-what tests/test_kv_cache.py pins down. The cache is a pure speed optimization;
-it never changes what the model would have said.
-
-Context ceiling: this model uses *learned absolute* position embeddings, so it
-only knows positions 0..block_size-1. Generation is therefore capped at
-block_size total tokens. (A sliding window past that would re-index positions,
-which a KV cache — with positions baked into stored K/V — cannot replicate; it
-is exactly why production models use relative positions like RoPE/ALiBi. Both
-paths here cap identically so they stay interchangeable on every valid input.)
-
-Batch: single-sequence only (B=1). A flat list of ids in, a flat list out.
-
-Built with Claude Code.
+"""Two generation paths: naive recompute and kv-cached. Same tokens out of
+either one, the cache is just speed. Capped at block_size since we use absolute
+position embeddings and a sliding cache can't reindex the stored k/v. B=1 only.
 """
 
 import torch

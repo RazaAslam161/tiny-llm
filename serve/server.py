@@ -1,13 +1,11 @@
-"""FastAPI server: streams generated tokens over Server-Sent Events.
+"""FastAPI app, streams tokens over SSE.
 
-    POST /generate  {prompt, max_tokens, temperature, top_p, top_k}  -> text/event-stream
-    GET  /healthz   -> {"status": "ok"}
-    GET  /          -> the web UI
+    POST /generate  {prompt, max_tokens, temperature, top_p, top_k} -> event-stream
+    GET  /healthz
+    GET  /          web UI
 
-Model and tokenizer are injected via build_app() so tests can pass a tiny model;
-the module-level `app` loads the real checkpoint (path/quantize from env).
-
-Built with Claude Code.
+build_app() takes the model + tokenizer so tests can pass a small one; the
+module-level app loads the real checkpoint (paths and quantize flag from env).
 """
 
 import json

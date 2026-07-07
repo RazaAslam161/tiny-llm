@@ -1,7 +1,5 @@
-"""GPT decoder for tiny-llm: pre-norm transformer with RMSNorm, GELU MLP,
-learned positional embeddings, and a weight-tied LM head.
-
-Built with Claude Code.
+"""GPT decoder: pre-norm blocks (RMSNorm, GELU MLP), learned position
+embeddings, tied LM head.
 """
 
 import math
@@ -57,10 +55,8 @@ class CausalSelfAttention(nn.Module):
         Tk = k.size(2)  # total keys attended = cached + new
 
         att = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        # the T queries are the LAST T positions; query row i (absolute
-        # position Tk-T+i) may attend to key j <= its own position, which is
-        # exactly the last T rows of the (Tk x Tk) causal mask. With no cache
-        # Tk == T and this is mask[:, :, :T, :T] — identical to before.
+        # queries are the last T positions, so slice the last T rows of the
+        # Tk x Tk causal mask. no cache -> Tk == T -> same as [:, :, :T, :T]
         att = att.masked_fill(~self.mask[:, :, Tk - T:Tk, :Tk], float("-inf"))
         att = F.softmax(att, dim=-1)
         att = self.attn_dropout(att)

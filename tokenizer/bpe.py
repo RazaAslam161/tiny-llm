@@ -1,10 +1,6 @@
-"""Byte-level BPE tokenizer for tiny-llm.
-
-Training counts adjacent pairs over unique pre-tokenized chunks weighted by
-frequency, with incremental pair-count updates after each merge — fast enough
-to train a 4k vocab on ~50MB of text in pure Python.
-
-Built with Claude Code.
+"""Byte-level BPE. Counts adjacent pairs over unique pre-tokenized chunks and
+updates counts incrementally after each merge, so training a 4k vocab on ~50MB
+stays fast enough in pure Python.
 """
 
 import json
