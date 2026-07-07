@@ -17,21 +17,9 @@ Built with Claude Code.
 """
 
 import torch
-import torch.nn.functional as F
 
 from serve.kv_cache import KVCache
-
-
-def sample_next(logits, temperature=0.8, top_k=50):
-    """Pick the next token id from last-position logits (B, vocab)."""
-    if temperature <= 0:
-        return logits.argmax(dim=-1, keepdim=True)
-    logits = logits / temperature
-    if top_k:
-        kth = torch.topk(logits, min(top_k, logits.size(-1))).values[:, -1, None]
-        logits = logits.masked_fill(logits < kth, float("-inf"))
-    probs = F.softmax(logits, dim=-1)
-    return torch.multinomial(probs, num_samples=1)
+from serve.sampler import sample
 
 
 def _budget(model, ids, max_new_tokens):
@@ -45,20 +33,20 @@ def _budget(model, ids, max_new_tokens):
 
 
 @torch.no_grad()
-def generate_naive(model, ids, max_new_tokens, temperature=0.8, top_k=50):
+def generate_naive(model, ids, max_new_tokens, temperature=0.8, top_k=50, top_p=1.0):
     """Recompute attention over the whole prefix every step (no cache)."""
     model.eval()
     n = _budget(model, ids, max_new_tokens)
     idx = torch.tensor([ids], dtype=torch.long)
     for _ in range(n):
         logits, _ = model(idx)
-        nxt = sample_next(logits[:, -1, :], temperature, top_k)
+        nxt = sample(logits[:, -1, :], temperature, top_k, top_p)
         idx = torch.cat((idx, nxt), dim=1)
     return idx[0].tolist()
 
 
 @torch.no_grad()
-def generate_cached(model, ids, max_new_tokens, temperature=0.8, top_k=50):
+def generate_cached(model, ids, max_new_tokens, temperature=0.8, top_k=50, top_p=1.0):
     """Prefill the prompt once, then feed one token at a time against the cache."""
     model.eval()
     n = _budget(model, ids, max_new_tokens)
@@ -68,7 +56,7 @@ def generate_cached(model, ids, max_new_tokens, temperature=0.8, top_k=50):
     for _ in range(n):
         logits, _, presents = model(cur, past_kvs=cache.layers, use_cache=True)
         cache.update(presents)
-        nxt = sample_next(logits[:, -1, :], temperature, top_k)
+        nxt = sample(logits[:, -1, :], temperature, top_k, top_p)
         out.append(int(nxt))
         cur = nxt  # thereafter: a single new token per step
     return out
