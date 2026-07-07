@@ -3,5 +3,6 @@ data/
 checkpoints/
 __pycache__/
 .pytest_cache/
+.claude/
 *.bin
 *.pt
