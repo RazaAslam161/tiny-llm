@@ -32,6 +32,11 @@
     width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--border);
     border-radius: 10px; padding: 12px 14px; font: inherit; resize: vertical; min-height: 60px;
   }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 2px; }
+  .chip { background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+  .hint { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
   .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 14px 0; }
   .ctl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
   .ctl input[type=range] { width: 130px; accent-color: var(--accent); }
@@ -51,9 +56,11 @@
   <div id="out" class="out empty"></div>
 
   <textarea id="prompt" rows="2">Once upon a time</textarea>
+  <div class="chips" id="chips"></div>
+  <p class="hint">Each Generate samples a fresh story — click again for a different one. Higher temperature = more variety.</p>
   <div class="controls">
-    <label class="ctl">temperature <span class="val" id="tv">0.8</span>
-      <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.8"></label>
+    <label class="ctl">temperature <span class="val" id="tv">0.9</span>
+      <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.9"></label>
     <label class="ctl">top-p <span class="val" id="pv">0.9</span>
       <input type="range" id="topp" min="0.1" max="1" step="0.05" value="0.9"></label>
     <label class="ctl">max tokens <span class="val" id="mv">200</span>
@@ -67,6 +74,22 @@
   const out = $("out"), btn = $("go");
   const bind = (r, v) => { const f = () => $(v).textContent = $(r).value; $(r).oninput = f; f(); };
   bind("temp", "tv"); bind("topp", "pv"); bind("maxt", "mv");
+
+  const EXAMPLES = [
+    "Once upon a time",
+    "One day, a little girl named Lily",
+    "The dog saw a bone and",
+    "Tom opened the box and",
+    "In the dark forest,",
+    "The little robot beeped and",
+  ];
+  const chips = $("chips");
+  for (const ex of EXAMPLES) {
+    const c = document.createElement("span");
+    c.className = "chip"; c.textContent = ex;
+    c.onclick = () => { $("prompt").value = ex; generate(); };
+    chips.appendChild(c);
+  }
 
   async function generate() {
     const prompt = $("prompt").value;
