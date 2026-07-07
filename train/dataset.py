@@ -5,6 +5,7 @@ Usage (from the repo root):
 """
 
 import argparse
+import os
 import time
 
 import numpy as np
@@ -54,6 +55,7 @@ def main():
 
     tok = BPETokenizer.load(args.tokenizer)
     assert len(tok.merges) > 0, "tokenizer has no merges — train it first"
+    os.makedirs(args.out_dir, exist_ok=True)
 
     for split, out, limit in [
         ("train", f"{args.out_dir}/train.bin", int(args.train_mb * 1e6)),
