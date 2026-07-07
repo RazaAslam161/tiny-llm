@@ -4,5 +4,6 @@ checkpoints/
 __pycache__/
 .pytest_cache/
 .claude/
+hf-space/
 *.bin
 *.pt
