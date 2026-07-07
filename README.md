@@ -6,6 +6,8 @@ and a FastAPI server that streams tokens to a web page.
 
 It writes short children's stories. That's the only thing it knows how to do.
 
+live demo: https://huggingface.co/spaces/raza161/tiny-llm
+
 ## What's here
 
 - tokenizer: byte-level BPE, 4096 vocab, about 1.15 tokens/word on TinyStories
